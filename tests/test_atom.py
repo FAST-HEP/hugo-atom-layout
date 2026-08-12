@@ -231,8 +231,8 @@ def test_atom_entries_have_alternate_html_links(
     atom_entries: list[ET.Element],
 ) -> None:
     expected_urls = [
-        "https://example.org/posts/newer/",
-        "https://example.org/posts/older/",
+        "https://example.org/posts/newer/?utm_source=atom_feed",
+        "https://example.org/posts/older/?utm_source=atom_feed",
     ]
 
     for entry, expected_url in zip(
