@@ -1,0 +1,5 @@
+
+{{/* Advertise alternative output formats from the HTML document head. */}}
+{{- range .AlternativeOutputFormats }}
+<link rel="{{ .Rel }}" type="{{ .MediaType.Type }}" href="{{ .Permalink }}">
+{{- end }}
