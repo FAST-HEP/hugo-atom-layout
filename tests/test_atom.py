@@ -1,0 +1,477 @@
+from __future__ import annotations
+
+import subprocess
+import xml.etree.ElementTree as ET
+from pathlib import Path
+
+import pytest
+import re
+from html.parser import HTMLParser
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+FIXTURE_ROOT = PROJECT_ROOT / "tests" / "fixtures" / "atom"
+THEMES_DIR = PROJECT_ROOT / ".build" / "themes"
+
+ATOM_NAMESPACE = "http://www.w3.org/2005/Atom"
+ATOM = f"{{{ATOM_NAMESPACE}}}"
+
+XML_NAMESPACE = "http://www.w3.org/XML/1998/namespace"
+XML_LANG = f"{{{XML_NAMESPACE}}}lang"
+
+
+class LinkParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.links: list[dict[str, str | None]] = []
+
+    def handle_starttag(
+        self,
+        tag: str,
+        attrs: list[tuple[str, str | None]],
+    ) -> None:
+        if tag == "link":
+            self.links.append(dict(attrs))
+
+
+def parse_html_links(path: Path) -> list[dict[str, str | None]]:
+    parser = LinkParser()
+    parser.feed(path.read_text(encoding="utf-8"))
+    return parser.links
+
+
+@pytest.fixture(scope="module")
+def built_site(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    output_dir = tmp_path_factory.mktemp("atom-site") / "public"
+
+    result = subprocess.run(
+        [
+            "hugo",
+            "--source",
+            str(FIXTURE_ROOT),
+            "--themesDir",
+            str(THEMES_DIR),
+            "--destination",
+            str(output_dir),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, (
+        "Hugo failed to build the Atom fixture.\n\n"
+        f"stdout:\n{result.stdout}\n\n"
+        f"stderr:\n{result.stderr}"
+    )
+
+    return output_dir
+
+
+@pytest.fixture(scope="module")
+def atom_feed(built_site: Path) -> ET.Element:
+    atom_path = built_site / "atom.xml"
+
+    assert atom_path.is_file(), "Hugo did not generate atom.xml"
+
+    source = atom_path.read_text(encoding="utf-8")
+
+    try:
+        return ET.fromstring(source)
+    except ET.ParseError as error:
+        numbered_source = "\n".join(
+            f"{line_number:4}: {line}"
+            for line_number, line in enumerate(
+                source.splitlines(),
+                start=1,
+            )
+        )
+        pytest.fail(
+            f"Generated Atom feed is not valid XML: {error}\n\n{numbered_source}"
+        )
+
+
+# RFC 4287: https://www.rfc-editor.org/info/rfc4287/#section-4
+
+
+def test_atom_feed_uses_atom_namespace(atom_feed: ET.Element) -> None:
+    assert atom_feed.tag == f"{ATOM}feed"
+
+
+@pytest.mark.parametrize("element_name", ["title", "id", "updated"])
+def test_atom_feed_contains_required_metadata(
+    atom_feed: ET.Element,
+    element_name: str,
+) -> None:
+    elements = atom_feed.findall(f"{ATOM}{element_name}")
+
+    assert len(elements) == 1
+    assert elements[0].text
+
+
+def test_atom_feed_title(atom_feed: ET.Element) -> None:
+    assert atom_feed.findtext(f"{ATOM}title") == "Atom Test Site"
+
+
+def test_atom_feed_id_is_canonical_home_url(atom_feed: ET.Element) -> None:
+    assert atom_feed.findtext(f"{ATOM}id") == "https://example.org/"
+
+
+def test_atom_feed_updated_uses_latest_entry_update(
+    atom_feed: ET.Element,
+) -> None:
+    assert atom_feed.findtext(f"{ATOM}updated") == "2026-01-05T12:00:00Z"
+
+
+def test_atom_feed_contains_author(atom_feed: ET.Element) -> None:
+    authors = atom_feed.findall(f"{ATOM}author")
+
+    assert len(authors) == 1
+
+
+def test_atom_feed_author_has_name(atom_feed: ET.Element) -> None:
+    author = atom_feed.find(f"{ATOM}author")
+
+    assert author is not None
+    assert author.findtext(f"{ATOM}name") == "Example Team"
+
+
+def test_atom_feed_author_includes_configured_email(
+    atom_feed: ET.Element,
+) -> None:
+    author = atom_feed.find(f"{ATOM}author")
+
+    assert author is not None
+    assert author.findtext(f"{ATOM}email") == "team@example.org"
+
+
+def find_link(atom_feed: ET.Element, rel: str) -> ET.Element:
+    links = [
+        link for link in atom_feed.findall(f"{ATOM}link") if link.get("rel") == rel
+    ]
+
+    assert len(links) == 1
+    return links[0]
+
+
+def test_atom_feed_has_self_link(atom_feed: ET.Element) -> None:
+    link = find_link(atom_feed, "self")
+
+    assert link.get("href") == "https://example.org/atom.xml"
+    assert link.get("type") == "application/atom+xml"
+
+
+def test_atom_feed_has_alternate_html_link(
+    atom_feed: ET.Element,
+) -> None:
+    link = find_link(atom_feed, "alternate")
+
+    assert link.get("href") == "https://example.org/"
+    assert link.get("type") == "text/html"
+
+
+@pytest.fixture(scope="module")
+def atom_entries(atom_feed: ET.Element) -> list[ET.Element]:
+    return atom_feed.findall(f"{ATOM}entry")
+
+
+def test_atom_feed_contains_entries(
+    atom_entries: list[ET.Element],
+) -> None:
+    assert len(atom_entries) == 2
+
+
+def test_atom_entries_are_ordered_by_publication_date(
+    atom_entries: list[ET.Element],
+) -> None:
+    titles = [entry.findtext(f"{ATOM}title") for entry in atom_entries]
+
+    assert titles == [
+        "Newer post",
+        "Older post with <XML> & characters",
+    ]
+
+
+@pytest.mark.parametrize("element_name", ["title", "id", "updated"])
+def test_atom_entries_contain_required_metadata(
+    atom_entries: list[ET.Element],
+    element_name: str,
+) -> None:
+    for entry in atom_entries:
+        elements = entry.findall(f"{ATOM}{element_name}")
+
+        assert len(elements) == 1
+        assert elements[0].text
+
+
+def test_atom_entry_ids_are_canonical_urls(
+    atom_entries: list[ET.Element],
+) -> None:
+    ids = [entry.findtext(f"{ATOM}id") for entry in atom_entries]
+
+    assert ids == [
+        "https://example.org/posts/newer/",
+        "https://example.org/posts/older/",
+    ]
+
+
+def test_atom_entry_dates(atom_entries: list[ET.Element]) -> None:
+    assert [entry.findtext(f"{ATOM}published") for entry in atom_entries] == [
+        "2026-01-03T11:00:00Z",
+        "2026-01-01T10:00:00Z",
+    ]
+
+    assert [entry.findtext(f"{ATOM}updated") for entry in atom_entries] == [
+        "2026-01-03T11:00:00Z",
+        "2026-01-05T12:00:00Z",
+    ]
+
+
+def test_atom_entries_have_alternate_html_links(
+    atom_entries: list[ET.Element],
+) -> None:
+    expected_urls = [
+        "https://example.org/posts/newer/",
+        "https://example.org/posts/older/",
+    ]
+
+    for entry, expected_url in zip(
+        atom_entries,
+        expected_urls,
+        strict=True,
+    ):
+        links = [
+            link
+            for link in entry.findall(f"{ATOM}link")
+            if link.get("rel") == "alternate"
+        ]
+
+        assert len(links) == 1
+        assert links[0].get("href") == expected_url
+        assert links[0].get("type") == "text/html"
+
+
+def test_atom_entries_contain_html_content(
+    atom_entries: list[ET.Element],
+) -> None:
+    for entry in atom_entries:
+        contents = entry.findall(f"{ATOM}content")
+
+        assert len(contents) == 1
+        assert contents[0].get("type") == "html"
+        assert contents[0].text
+
+
+def test_atom_entry_content_is_encoded_html(
+    atom_entries: list[ET.Element],
+) -> None:
+    for entry in atom_entries:
+        content = entry.find(f"{ATOM}content")
+
+        assert content is not None
+        assert len(content) == 0
+        assert "<p>" in (content.text or "")
+
+
+def test_atom_entry_content_preserves_html(
+    atom_entries: list[ET.Element],
+) -> None:
+    content = atom_entries[1].findtext(f"{ATOM}content")
+
+    assert content is not None
+    assert "<p>" in content
+    assert "</p>" in content
+
+
+def entry_by_title(
+    atom_entries: list[ET.Element],
+    title: str,
+) -> ET.Element:
+    matches = [
+        entry for entry in atom_entries if entry.findtext(f"{ATOM}title") == title
+    ]
+
+    assert len(matches) == 1
+    return matches[0]
+
+
+def test_atom_entry_categories(
+    atom_entries: list[ET.Element],
+) -> None:
+    entry = entry_by_title(atom_entries, "Newer post")
+
+    categories = entry.findall(f"{ATOM}category")
+
+    assert [
+        (
+            category.get("term"),
+            category.get("scheme"),
+            category.get("label"),
+        )
+        for category in categories
+    ] == [
+        (
+            "Python",
+            "https://example.org/tags/",
+            "Python",
+        ),
+        (
+            "Scientific Computing",
+            "https://example.org/tags/",
+            "Scientific Computing",
+        ),
+    ]
+
+
+@pytest.fixture(scope="module")
+def posts_atom_feed(built_site: Path) -> ET.Element:
+    atom_path = built_site / "posts" / "atom.xml"
+
+    assert atom_path.is_file(), "Hugo did not generate posts/atom.xml"
+
+    source = atom_path.read_text(encoding="utf-8")
+
+    try:
+        return ET.fromstring(source)
+    except ET.ParseError as error:
+        pytest.fail(f"Generated posts/atom.xml is not valid XML: {error}\n\n{source}")
+
+
+def test_posts_atom_feed_metadata(
+    posts_atom_feed: ET.Element,
+) -> None:
+    assert posts_atom_feed.tag == f"{ATOM}feed"
+    assert posts_atom_feed.findtext(f"{ATOM}title") == "Test Posts"
+    assert posts_atom_feed.findtext(f"{ATOM}id") == "https://example.org/posts/"
+
+    self_link = find_link(posts_atom_feed, "self")
+    assert self_link.get("href") == "https://example.org/posts/atom.xml"
+    assert self_link.get("type") == "application/atom+xml"
+
+    alternate_link = find_link(posts_atom_feed, "alternate")
+    assert alternate_link.get("href") == "https://example.org/posts/"
+    assert alternate_link.get("type") == "text/html"
+
+
+def test_posts_atom_feed_contains_section_entries(
+    posts_atom_feed: ET.Element,
+) -> None:
+    entries = posts_atom_feed.findall(f"{ATOM}entry")
+
+    assert [entry.findtext(f"{ATOM}title") for entry in entries] == [
+        "Newer post",
+        "Older post with <XML> & characters",
+    ]
+
+
+@pytest.fixture(scope="module")
+def empty_atom_feed(built_site: Path) -> ET.Element:
+    atom_path = built_site / "empty" / "atom.xml"
+
+    assert atom_path.is_file(), "Hugo did not generate empty/atom.xml"
+
+    source = atom_path.read_text(encoding="utf-8")
+
+    try:
+        return ET.fromstring(source)
+    except ET.ParseError as error:
+        pytest.fail(f"Generated empty/atom.xml is not valid XML: {error}\n\n{source}")
+
+
+def test_empty_atom_feed_has_required_metadata(
+    empty_atom_feed: ET.Element,
+) -> None:
+    assert empty_atom_feed.findtext(f"{ATOM}title") == "Empty section"
+    assert empty_atom_feed.findtext(f"{ATOM}id") == "https://example.org/empty/"
+    assert empty_atom_feed.findtext(f"{ATOM}updated") == "2026-01-07T09:00:00Z"
+
+
+def test_empty_atom_feed_contains_no_entries(
+    empty_atom_feed: ET.Element,
+) -> None:
+    assert empty_atom_feed.findall(f"{ATOM}entry") == []
+
+
+def test_atom_feed_identifies_hugo_generator(
+    atom_feed: ET.Element,
+) -> None:
+    generators = atom_feed.findall(f"{ATOM}generator")
+
+    assert len(generators) == 1
+
+    generator = generators[0]
+
+    assert generator.text == "Hugo"
+    assert generator.get("uri") == "https://gohugo.io/"
+    version = generator.get("version")
+
+    assert version is not None
+    assert re.fullmatch(r"\d+\.\d+\.\d+", version), (
+        f"Unexpected Hugo version format: {version!r}"
+    )
+
+
+def test_atom_feed_declares_language(atom_feed: ET.Element) -> None:
+    # locale differs depending on the environment, so just check that it exists
+    assert atom_feed.get(XML_LANG)
+
+
+def test_atom_feed_contains_description(
+    atom_feed: ET.Element,
+) -> None:
+    assert atom_feed.findtext(f"{ATOM}subtitle") == "A test feed"
+
+
+def test_atom_entry_content_uses_entry_as_base_url(
+    atom_entries: list[ET.Element],
+) -> None:
+    for entry in atom_entries:
+        content = entry.find(f"{ATOM}content")
+
+        assert content is not None
+        assert content.get(
+            "{http://www.w3.org/XML/1998/namespace}base"
+        ) == entry.findtext(f"{ATOM}id")
+
+
+def test_atom_feed_respects_configured_item_limit(
+    built_site: Path,
+    atom_entries: list[ET.Element],
+) -> None:
+    assert (built_site / "posts" / "excluded_older" / "index.html").is_file()
+
+    assert [entry.findtext(f"{ATOM}title") for entry in atom_entries] == [
+        "Newer post",
+        "Older post with <XML> & characters",
+    ]
+
+
+@pytest.mark.parametrize(
+    ("html_path", "expected_feed_url"),
+    [
+        ("index.html", "https://example.org/atom.xml"),
+        (
+            "posts/index.html",
+            "https://example.org/posts/atom.xml",
+        ),
+        (
+            "empty/index.html",
+            "https://example.org/empty/atom.xml",
+        ),
+    ],
+)
+def test_html_pages_advertise_atom_feed(
+    built_site: Path,
+    html_path: str,
+    expected_feed_url: str,
+) -> None:
+    links = parse_html_links(built_site / html_path)
+
+    atom_links = [
+        link
+        for link in links
+        if link.get("rel") == "alternate" and link.get("type") == "application/atom+xml"
+    ]
+
+    assert len(atom_links) == 1
+    assert atom_links[0].get("href") == expected_feed_url

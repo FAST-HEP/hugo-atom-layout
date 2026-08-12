@@ -1,0 +1,25 @@
+baseURL: "https://example.org/"
+languange:
+  locale: "en-GB"
+title: "Atom Test Site"
+theme:
+  - hugo-atom-layout
+  - scientific-python-hugo-theme
+
+params:
+  author:
+    name: "Example Team"
+    email: "team@example.org"
+  description: "A test feed"
+
+outputs:
+  home:
+    - html
+    - atom
+  section:
+    - html
+    - atom
+
+services:
+  rss:
+    limit: 2
