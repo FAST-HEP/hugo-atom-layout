@@ -475,3 +475,42 @@ def test_html_pages_advertise_atom_feed(
 
     assert len(atom_links) == 1
     assert atom_links[0].get("href") == expected_feed_url
+
+
+def test_atom_entry_prepends_description_as_blockquote(
+    atom_feed: ET.Element,
+) -> None:
+    entry = next(
+        entry
+        for entry in atom_feed.findall(f"{ATOM}entry")
+        if entry.findtext(f"{ATOM}title") == "Newer post"
+    )
+
+    content = entry.findtext(f"{ATOM}content")
+    assert content is not None
+
+    fragment = ET.fromstring(f"<root>{content}</root>")
+    blockquote = fragment.find("blockquote")
+
+    assert blockquote is not None
+    assert "".join(blockquote.itertext()).strip() == (
+        "A short description of the post."
+    )
+    assert blockquote.find("strong") is not None
+    assert fragment[0] is blockquote
+
+
+def test_atom_entry_omits_blockquote_without_description(
+    atom_feed: ET.Element,
+) -> None:
+    entry = next(
+        entry
+        for entry in atom_feed.findall(f"{ATOM}entry")
+        if entry.findtext(f"{ATOM}title") == "Older post with <XML> & characters"
+    )
+
+    content = entry.findtext(f"{ATOM}content")
+    assert content is not None
+
+    fragment = ET.fromstring(f"<root>{content}</root>")
+    assert fragment.find("blockquote") is None

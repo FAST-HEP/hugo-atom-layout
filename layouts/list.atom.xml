@@ -38,7 +38,11 @@
       {{- with .OutputFormats.Get "html" }}
       <link rel="alternate" href="{{ .Permalink }}?utm_source=atom_feed" type="{{ .MediaType.Type }}" />
       {{- end }}
-      <content type="html" xml:base="{{ .Permalink }}">{{ printf "%s" .Content }}</content>
+      {{- $description := "" -}}
+      {{- with .Description -}}
+        {{- $description = printf "<blockquote>%s</blockquote>" (. | markdownify) -}}
+      {{- end }}
+      <content type="html" xml:base="{{ .Permalink }}">{{ printf "%s%s" $description .Content }}</content>
       {{- range .GetTerms "tags" }}
       <category term="{{ .LinkTitle }}" scheme="{{ site.Home.Permalink }}tags/" label="{{ .LinkTitle }}" />
       {{- end }}
