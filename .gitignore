@@ -1,0 +1,12 @@
+*~
+\#*
+.hugo_build.lock
+
+# Auto-generated
+public
+
+__pycache__
+__pycache__/
+*.py[cod]
+
+.build/

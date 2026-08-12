@@ -1,0 +1,8 @@
+name = "Hugo Atom Layout"
+license = "BSD-3-Clause"
+licenselink = "https://github.com/FAST-HEP/hugo-atom-layout/blob/main/LICENSE"
+description = "A small Atom feed layout for Hugo."
+homepage = "https://github.com/FAST-HEP/hugo-atom-layout"
+tags = ["atom", "feed", "syndication"]
+features = ["atom-feed"]
+min_version = "0.164.0"
