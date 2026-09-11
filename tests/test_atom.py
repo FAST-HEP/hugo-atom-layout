@@ -40,20 +40,24 @@ def parse_html_links(path: Path) -> list[dict[str, str | None]]:
     return parser.links
 
 
-@pytest.fixture(scope="module")
-def built_site(tmp_path_factory: pytest.TempPathFactory) -> Path:
-    output_dir = tmp_path_factory.mktemp("atom-site") / "public"
+def build_site(output_dir: Path, config_overrides: list[Path] | None = None) -> Path:
+    """Build the fixture site, optionally layering extra config files on top."""
+    command = [
+        "hugo",
+        "--source",
+        str(FIXTURE_ROOT),
+        "--themesDir",
+        str(THEMES_DIR),
+        "--destination",
+        str(output_dir),
+    ]
+
+    if config_overrides:
+        config_files = [FIXTURE_ROOT / "config.yaml", *config_overrides]
+        command += ["--config", ",".join(str(path) for path in config_files)]
 
     result = subprocess.run(
-        [
-            "hugo",
-            "--source",
-            str(FIXTURE_ROOT),
-            "--themesDir",
-            str(THEMES_DIR),
-            "--destination",
-            str(output_dir),
-        ],
+        command,
         capture_output=True,
         text=True,
         check=False,
@@ -66,6 +70,11 @@ def built_site(tmp_path_factory: pytest.TempPathFactory) -> Path:
     )
 
     return output_dir
+
+
+@pytest.fixture(scope="module")
+def built_site(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    return build_site(tmp_path_factory.mktemp("atom-site") / "public")
 
 
 @pytest.fixture(scope="module")
@@ -444,6 +453,53 @@ def test_atom_feed_respects_configured_item_limit(
         "Newer post",
         "Older post with <XML> & characters",
     ]
+
+
+def test_atom_home_feed_only_lists_main_sections(
+    built_site: Path,
+    atom_entries: list[ET.Element],
+) -> None:
+    # Both pages exist and are newer than every post, so they would lead the
+    # home feed if it were not restricted to the main sections.
+    assert (built_site / "about" / "index.html").is_file()
+    assert (built_site / "docs" / "guide" / "index.html").is_file()
+
+    ids = [entry.findtext(f"{ATOM}id") for entry in atom_entries]
+
+    assert "https://example.org/about/" not in ids
+    assert "https://example.org/docs/guide/" not in ids
+
+
+@pytest.mark.parametrize(
+    ("override", "expected_ids"),
+    [
+        (
+            "all-sections.yaml",
+            [
+                "https://example.org/about/",
+                "https://example.org/docs/guide/",
+            ],
+        ),
+        (
+            "docs-section.yaml",
+            ["https://example.org/docs/guide/"],
+        ),
+    ],
+)
+def test_atom_home_feed_sections_are_configurable(
+    tmp_path: Path,
+    override: str,
+    expected_ids: list[str],
+) -> None:
+    output_dir = build_site(
+        tmp_path / "public",
+        [FIXTURE_ROOT / "overrides" / override],
+    )
+
+    feed = ET.fromstring((output_dir / "atom.xml").read_text(encoding="utf-8"))
+    ids = [entry.findtext(f"{ATOM}id") for entry in feed.findall(f"{ATOM}entry")]
+
+    assert ids == expected_ids
 
 
 @pytest.mark.parametrize(

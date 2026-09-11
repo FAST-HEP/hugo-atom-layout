@@ -6,7 +6,14 @@
     <subtitle>{{ . }}</subtitle>
     {{- end }}
     <id>{{ .Permalink }}</id>
-    {{- $entries := .RegularPagesRecursive.ByDate.Reverse -}}
+    {{- $entries := .RegularPagesRecursive -}}
+    {{- if .IsHome -}}
+        {{- $sections := site.Params.atom.sections | default site.MainSections -}}
+        {{- if and $sections (not (in $sections "*")) -}}
+            {{- $entries = where $entries "Section" "in" $sections -}}
+        {{- end -}}
+    {{- end -}}
+    {{- $entries = $entries.ByDate.Reverse -}}
     {{- $limit := site.Config.Services.RSS.Limit -}}
     {{- if ge $limit 1 -}}
         {{- $entries = first $limit $entries -}}

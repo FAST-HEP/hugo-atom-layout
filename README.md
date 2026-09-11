@@ -20,10 +20,30 @@ The template uses:
 - `params.author.name`
 - `params.author.email` (optional)
 - `params.description` (optional)
+- `params.atom.sections` (optional)
 - `services.rss.limit`
 - the configured language locale
 
 When no author name is configured, the site title is used.
+
+### Which pages appear in the home feed
+
+The home feed (`/atom.xml`) only lists pages from the site's main sections,
+so that subscribers to a blog do not receive every page on the site. Hugo
+derives the main sections from the section with the most pages, and a site
+can pin them with the top-level `mainSections` setting.
+
+`params.atom.sections` overrides that list for the home feed:
+
+```yaml
+params:
+  atom:
+    sections: ["posts", "news"]
+```
+
+Use `["*"]` to include every regular page on the site. Section feeds such as
+`/posts/atom.xml` always list the pages of their own section and ignore this
+setting.
 
 ## Development
 
