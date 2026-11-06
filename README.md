@@ -26,6 +26,15 @@ The template uses:
 
 When no author name is configured, the site title is used.
 
+A feed takes its title from its page. To use another title, set
+`atom.title` in the page front matter, for example in a section's
+`_index.md`:
+
+```yaml
+atom:
+  title: "My blog"
+```
+
 ### Which pages appear in the home feed
 
 The home feed (`/atom.xml`) only lists pages from the site's main sections,
