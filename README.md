@@ -26,6 +26,9 @@ The template uses:
 
 When no author name is configured, the site title is used.
 
+Each entry lists its terms from every taxonomy (tags, categories, and any
+custom taxonomy) as `<category>` elements.
+
 ### Which pages appear in the home feed
 
 The home feed (`/atom.xml`) only lists pages from the site's main sections,
