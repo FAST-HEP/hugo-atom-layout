@@ -1,7 +1,9 @@
 {{ printf `<?xml version="1.0" encoding="utf-8"?>` | safeHTML }}
 <feed xmlns="http://www.w3.org/2005/Atom" {{- with site.Language.Locale }} xml:lang="{{ . }}"{{ end }}>
     <generator uri="https://gohugo.io/" version="{{ hugo.Version }}">Hugo</generator>
-    <title>{{ .Title }}</title>
+    {{- $title := .Title }}
+    {{- with .Params.atom }}{{ with .title }}{{ $title = . }}{{ end }}{{ end }}
+    <title>{{ $title }}</title>
     {{- with site.Params.description }}
     <subtitle>{{ . }}</subtitle>
     {{- end }}

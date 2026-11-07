@@ -575,3 +575,13 @@ def test_atom_entry_omits_blockquote_without_description(
 
     fragment = ET.fromstring(f"<root>{content}</root>")
     assert fragment.find("blockquote") is None
+
+
+def test_section_front_matter_overrides_feed_title(built_site: Path) -> None:
+    atom_path = built_site / "docs" / "atom.xml"
+
+    assert atom_path.is_file(), "Hugo did not generate docs/atom.xml"
+
+    feed = ET.parse(atom_path).getroot()
+
+    assert feed.findtext(f"{ATOM}title") == "Atom Test Site documentation"
