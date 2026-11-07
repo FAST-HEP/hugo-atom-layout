@@ -52,8 +52,11 @@
         {{- $description = printf "<blockquote>%s</blockquote>" (. | markdownify) -}}
       {{- end }}
       <content type="html" xml:base="{{ .Permalink }}">{{ printf "%s%s" $description .Content }}</content>
-      {{- range .GetTerms "tags" }}
-      <category term="{{ .LinkTitle }}" scheme="{{ site.Home.Permalink }}tags/" label="{{ .LinkTitle }}" />
+      {{- $page := . }}
+      {{- range $taxonomy, $_ := site.Taxonomies }}
+      {{- range $page.GetTerms $taxonomy }}
+      <category term="{{ .LinkTitle }}" scheme="{{ site.Home.Permalink }}{{ $taxonomy }}/" label="{{ .LinkTitle }}" />
+      {{- end }}
       {{- end }}
     </entry>
     {{- end }}

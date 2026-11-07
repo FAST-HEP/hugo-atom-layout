@@ -4,6 +4,8 @@ date: 2026-01-03T11:00:00Z
 tags:
   - Python
   - Scientific computing
+categories:
+  - Releases
 description: "A **short** description of the post."
 ---
 

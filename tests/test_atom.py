@@ -320,6 +320,11 @@ def test_atom_entry_categories(
         for category in categories
     ] == [
         (
+            "Releases",
+            "https://example.org/categories/",
+            "Releases",
+        ),
+        (
             "Python",
             "https://example.org/tags/",
             "Python",

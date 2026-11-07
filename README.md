@@ -34,6 +34,8 @@ A feed takes its title from its page. To use another title, set
 atom:
   title: "My blog"
 ```
+Each entry lists its terms from every taxonomy (tags, categories, and any
+custom taxonomy) as `<category>` elements.
 
 ### Which pages appear in the home feed
 
